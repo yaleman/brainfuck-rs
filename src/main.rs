@@ -1,4 +1,4 @@
-use std::io::Read;
+// use std::io::Read;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -72,10 +72,7 @@ impl Brain {
             })
             .collect::<Vec<String>>()
             .join(" ");
-        println!(
-            "Data: ({}):\n{}",
-            self.data_pointer, data_output
-        );
+        println!("Data: ({}):\n{}", self.data_pointer, data_output);
 
         let program_string = self
             .program
@@ -104,7 +101,7 @@ impl Brain {
             Command::Read => todo!(), //self.read(),
             Command::JumpForward => self.jump_forward(),
             Command::JumpBackward => self.jump_backward(),
-            Command::Invalid => {},
+            Command::Invalid => {}
         }
         self.instruction_pointer += 1;
     }
@@ -145,7 +142,7 @@ impl Brain {
                 self.instruction_pointer += 1;
                 print!("{}", self.program[self.instruction_pointer]);
             }
-            println!("");
+            println!();
         }
     }
 
@@ -165,19 +162,21 @@ fn main() {
     let mut programs = HashMap::new();
 
     programs.insert("hello_world", "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.");
-    programs.insert("add_two_and_five", "++       Cell c0 = 2
+    programs.insert(
+        "add_two_and_five",
+        "++       Cell c0 = 2
     > +++++  Cell c1 = 5
     [        Start your loops with your cell pointer on the loop counter (c1 in our case)
     < +      Add 1 to c0
     > -      Subtract 1 from c1
-    ]    ");
+    ]    ",
+    );
 
     let mut brain = Brain::new(programs.get("hello_world").unwrap());
-    let mut stdin = std::io::stdin();
+    let stdin = std::io::stdin();
 
     while brain.instruction_pointer < brain.program.len() {
         brain.next();
-        stdin.read(&mut [0u8]).unwrap();
+        stdin.read_line(&mut String::new()).unwrap();
     }
-
 }
