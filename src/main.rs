@@ -3,12 +3,16 @@ use std::collections::HashMap;
 
 use clap::Parser;
 
+#[cfg(test)]
+mod test;
+
 #[derive(Parser)]
 struct Cli {
     #[arg(short, long)]
     debug: bool,
     #[arg(short, long)]
     step: bool,
+    program: String,
 }
 
 type DataCell = u8;
@@ -18,6 +22,7 @@ impl Default for Cli {
         Self {
             debug: false,
             step: false,
+            program: "add two and five".to_string(),
         }
     }
 }
@@ -58,7 +63,7 @@ struct Brain {
     instruction_pointer: usize,
     output_string: String,
     step: usize,
-    bracket_markers: Vec<usize>,
+    loop_depth: usize,
 }
 
 impl Brain {
@@ -70,7 +75,7 @@ impl Brain {
             instruction_pointer: 0,
             output_string: String::new(),
             step: 0,
-            bracket_markers: Vec::new(),
+            loop_depth: 0,
         }
     }
 
@@ -171,14 +176,14 @@ impl Brain {
     /// jump it forward to the command after the matching ] command.
     fn jump_forward(&mut self) {
         if self.data[self.data_pointer] == 0 {
-            while self.program[self.instruction_pointer] != ']' {
+            while self.program[self.instruction_pointer] != ']' || self.loop_depth > 0 {
                 self.instruction_pointer += 1;
-                // print!("{} ", self.instruction_pointer);
+                if  self.program[self.instruction_pointer] == '[' {
+                    self.loop_depth += 1;
+                } else if self.program[self.instruction_pointer] == ']' {
+                    self.loop_depth -= 1;
+                }
             }
-            // println!();
-        } else {
-            // we're in a loop now
-            self.bracket_markers.push(self.instruction_pointer);
         }
     }
 
@@ -187,15 +192,14 @@ impl Brain {
     /// jump it back to the command after the matching [ command.
     fn jump_backward(&mut self) {
         if self.data[self.data_pointer] != 0 {
-            // while self.program[self.instruction_pointer] != '[' {
-            //     self.instruction_pointer -= 1;
-            //     print!("{} ", self.instruction_pointer);
-            // }
-            if let Some(marker) = self.bracket_markers.last() {
-                self.instruction_pointer = marker.to_owned();
+            while self.program[self.instruction_pointer] != '[' && self.loop_depth > 0{
+                self.instruction_pointer -= 1;
+                if  self.program[self.instruction_pointer] == '[' {
+                    self.loop_depth -= 1;
+                } else if self.program[self.instruction_pointer] == ']' {
+                    self.loop_depth += 1;
+                }
             }
-        } else {
-            self.bracket_markers.pop();
         }
     }
 }
