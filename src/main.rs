@@ -1,6 +1,27 @@
 // use std::io::Read;
 use std::collections::HashMap;
 
+use clap::Parser;
+
+#[derive(Parser)]
+struct Cli {
+    #[arg(short, long)]
+    debug: bool,
+    #[arg(short, long)]
+    step: bool,
+}
+
+type DataCell = u8;
+
+impl Default for Cli {
+    fn default() -> Self {
+        Self {
+            debug: false,
+            step: false,
+        }
+    }
+}
+
 #[derive(Debug)]
 enum Command {
     MovRight,
@@ -31,12 +52,13 @@ impl From<char> for Command {
 }
 
 struct Brain {
-    data: Vec<u8>,
+    data: Vec<DataCell>,
     data_pointer: usize,
     program: Vec<char>,
     instruction_pointer: usize,
     output_string: String,
     step: usize,
+    bracket_markers: Vec<usize>,
 }
 
 impl Brain {
@@ -48,11 +70,14 @@ impl Brain {
             instruction_pointer: 0,
             output_string: String::new(),
             step: 0,
+            bracket_markers: Vec::new(),
         }
     }
 
-    #[allow(dead_code)]
     fn print_debug(&self) {
+        if self.instruction_pointer >= self.program.len() {
+            return
+        }
         println!(
             "Command: {:?} Step: {}",
             Command::from(self.program[self.instruction_pointer]),
@@ -87,10 +112,10 @@ impl Brain {
         println!("^");
         println!("{}", self.output_string);
     }
+
     /// Do the next thing
     fn next(&mut self) {
         self.step += 1;
-        self.print_debug();
 
         match Command::from(self.program[self.instruction_pointer]) {
             Command::MovRight => self.mov_right(),
@@ -119,18 +144,26 @@ impl Brain {
 
     /// Increment (increase by one) the byte at the data pointer.
     fn inc(&mut self) {
-        self.data[self.data_pointer] += 1;
+        if self.data[self.data_pointer] == DataCell::MAX {
+            self.data[self.data_pointer] = 0;
+        } else {
+            self.data[self.data_pointer] += 1;
+        }
     }
     /// Decrement (decrease by one) the byte at the data pointer.
     fn dec(&mut self) {
-        self.data[self.data_pointer] -= 1;
+        if self.data[self.data_pointer] == 0 {
+            self.data[self.data_pointer] = DataCell::MAX;
+        } else {
+            self.data[self.data_pointer] -= 1;
+        }
     }
 
     /// Output the byte at the data pointer.
     fn print(&mut self) {
-        print!("{:?}", char::from(self.data[self.data_pointer]));
+        print!("{}", char::from(self.data[self.data_pointer] as u8));
         self.output_string
-            .push(char::from(self.data[self.data_pointer]));
+            .push(char::from(self.data[self.data_pointer] as u8));
     }
 
     /// If the byte at the data pointer is zero,
@@ -140,9 +173,12 @@ impl Brain {
         if self.data[self.data_pointer] == 0 {
             while self.program[self.instruction_pointer] != ']' {
                 self.instruction_pointer += 1;
-                print!("{}", self.program[self.instruction_pointer]);
+                // print!("{} ", self.instruction_pointer);
             }
-            println!();
+            // println!();
+        } else {
+            // we're in a loop now
+            self.bracket_markers.push(self.instruction_pointer);
         }
     }
 
@@ -151,9 +187,15 @@ impl Brain {
     /// jump it back to the command after the matching [ command.
     fn jump_backward(&mut self) {
         if self.data[self.data_pointer] != 0 {
-            while self.program[self.instruction_pointer] != '[' {
-                self.instruction_pointer -= 1;
+            // while self.program[self.instruction_pointer] != '[' {
+            //     self.instruction_pointer -= 1;
+            //     print!("{} ", self.instruction_pointer);
+            // }
+            if let Some(marker) = self.bracket_markers.last() {
+                self.instruction_pointer = marker.to_owned();
             }
+        } else {
+            self.bracket_markers.pop();
         }
     }
 }
@@ -161,7 +203,13 @@ impl Brain {
 fn main() {
     let mut programs = HashMap::new();
 
+    let cli = Cli::parse();
+
+
+    // this one doesn't :(
     programs.insert("hello_world", "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.");
+
+    // this one works
     programs.insert(
         "add_two_and_five",
         "++       Cell c0 = 2
@@ -172,11 +220,39 @@ fn main() {
     ]    ",
     );
 
+
+    programs.insert("test", r#"Calculate the value 256 and test if it's zero
+    If the interpreter errors on overflow this is where it'll happen
+    ++++++++[>++++++++<-]>[<++++>-]
+    +<[>-<
+        Not zero so multiply by 256 again to get 65536
+        [>++++<-]>[<++++++++>-]<[>++++++++<-]
+        +>[>
+            # Print "32"
+            ++++++++++[>+++++<-]>+.-.[-]<
+        <[-]<->] <[>>
+            # Print "16"
+            +++++++[>+++++++<-]>.+++++.[-]<
+    <<-]] >[>
+        # Print "8"
+        ++++++++[>+++++++<-]>.[-]<
+    <-]<
+    # Print " bit cells\n"
+    +++++++++++[>+++>+++++++++>+++++++++>+<<<<-]>-.>-.+++++++.+++++++++++.<.
+    >>.++.+++++++..<-.>>-
+    Clean up used cells.
+    [[-]<]"#);
+
     let mut brain = Brain::new(programs.get("hello_world").unwrap());
     let stdin = std::io::stdin();
 
     while brain.instruction_pointer < brain.program.len() {
         brain.next();
-        stdin.read_line(&mut String::new()).unwrap();
+        if cli.debug {
+            brain.print_debug();
+        }
+        if cli.step {
+            stdin.read_line(&mut String::new()).unwrap();
+        }
     }
 }
