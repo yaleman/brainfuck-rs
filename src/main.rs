@@ -81,7 +81,7 @@ impl Brain {
 
     fn print_debug(&self) {
         if self.instruction_pointer >= self.program.len() {
-            return
+            return;
         }
         println!(
             "Command: {:?} Step: {}",
@@ -166,9 +166,9 @@ impl Brain {
 
     /// Output the byte at the data pointer.
     fn print(&mut self) {
-        print!("{}", char::from(self.data[self.data_pointer] as u8));
+        print!("{}", char::from(self.data[self.data_pointer]));
         self.output_string
-            .push(char::from(self.data[self.data_pointer] as u8));
+            .push(char::from(self.data[self.data_pointer]));
     }
 
     /// If the byte at the data pointer is zero,
@@ -178,7 +178,7 @@ impl Brain {
         if self.data[self.data_pointer] == 0 {
             while self.program[self.instruction_pointer] != ']' || self.loop_depth > 0 {
                 self.instruction_pointer += 1;
-                if  self.program[self.instruction_pointer] == '[' {
+                if self.program[self.instruction_pointer] == '[' {
                     self.loop_depth += 1;
                 } else if self.program[self.instruction_pointer] == ']' {
                     self.loop_depth -= 1;
@@ -192,9 +192,9 @@ impl Brain {
     /// jump it back to the command after the matching [ command.
     fn jump_backward(&mut self) {
         if self.data[self.data_pointer] != 0 {
-            while self.program[self.instruction_pointer] != '[' && self.loop_depth > 0{
+            while self.program[self.instruction_pointer] != '[' && self.loop_depth > 0 {
                 self.instruction_pointer -= 1;
-                if  self.program[self.instruction_pointer] == '[' {
+                if self.program[self.instruction_pointer] == '[' {
                     self.loop_depth -= 1;
                 } else if self.program[self.instruction_pointer] == ']' {
                     self.loop_depth += 1;
@@ -208,7 +208,6 @@ fn main() {
     let mut programs = HashMap::new();
 
     let cli = Cli::parse();
-
 
     // this one doesn't :(
     programs.insert("hello_world", "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.");
@@ -224,8 +223,9 @@ fn main() {
     ]    ",
     );
 
-
-    programs.insert("test", r#"Calculate the value 256 and test if it's zero
+    programs.insert(
+        "test",
+        r#"Calculate the value 256 and test if it's zero
     If the interpreter errors on overflow this is where it'll happen
     ++++++++[>++++++++<-]>[<++++>-]
     +<[>-<
@@ -245,7 +245,8 @@ fn main() {
     +++++++++++[>+++>+++++++++>+++++++++>+<<<<-]>-.>-.+++++++.+++++++++++.<.
     >>.++.+++++++..<-.>>-
     Clean up used cells.
-    [[-]<]"#);
+    [[-]<]"#,
+    );
 
     let mut brain = Brain::new(programs.get("hello_world").unwrap());
     let stdin = std::io::stdin();
