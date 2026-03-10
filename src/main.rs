@@ -209,7 +209,7 @@ fn main() {
 
     let cli = Cli::parse();
 
-    // this one doesn't :(
+    // this one doesn't  :(
     programs.insert("hello_world", "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.");
 
     // this one works
