@@ -1,6 +1,7 @@
 // use std::io::Read;
 use std::collections::HashMap;
 
+use brainfuck_rs::Brain;
 use clap::Parser;
 
 #[cfg(test)]
@@ -12,194 +13,19 @@ struct Cli {
     debug: bool,
     #[arg(short, long)]
     step: bool,
-    program: String,
+    #[arg(short, long, help = "program to run")]
+    program: Option<String>,
+    #[arg(long, help = "list built-in programs")]
+    list: bool,
 }
-
-type DataCell = u8;
 
 impl Default for Cli {
     fn default() -> Self {
         Self {
             debug: false,
             step: false,
-            program: "add two and five".to_string(),
-        }
-    }
-}
-
-#[derive(Debug)]
-enum Command {
-    MovRight,
-    MovLeft,
-    Inc,
-    Dec,
-    Print,
-    Read,
-    JumpForward,
-    JumpBackward,
-    Invalid,
-}
-
-impl From<char> for Command {
-    fn from(c: char) -> Self {
-        match c {
-            '>' => Command::MovRight,
-            '<' => Command::MovLeft,
-            '+' => Command::Inc,
-            '-' => Command::Dec,
-            '.' => Command::Print,
-            ',' => Command::Read,
-            '[' => Command::JumpForward,
-            ']' => Command::JumpBackward,
-            _ => Command::Invalid,
-        }
-    }
-}
-
-struct Brain {
-    data: Vec<DataCell>,
-    data_pointer: usize,
-    program: Vec<char>,
-    instruction_pointer: usize,
-    output_string: String,
-    step: usize,
-    loop_depth: usize,
-}
-
-impl Brain {
-    fn new(program: impl ToString) -> Brain {
-        Brain {
-            data: vec![0; 30000],
-            data_pointer: 0,
-            program: program.to_string().chars().collect(),
-            instruction_pointer: 0,
-            output_string: String::new(),
-            step: 0,
-            loop_depth: 0,
-        }
-    }
-
-    fn print_debug(&self) {
-        if self.instruction_pointer >= self.program.len() {
-            return;
-        }
-        println!(
-            "Command: {:?} Step: {}",
-            Command::from(self.program[self.instruction_pointer]),
-            self.step,
-        );
-        println!("Current byte: {:?}", self.data[self.data_pointer]);
-
-        let data_output = self.data[0..30]
-            .iter()
-            .enumerate()
-            .map(|(i, e)| {
-                if i == self.data_pointer {
-                    format!("{}*", e)
-                } else {
-                    e.to_string()
-                }
-            })
-            .collect::<Vec<String>>()
-            .join(" ");
-        println!("Data: ({}):\n{}", self.data_pointer, data_output);
-
-        let program_string = self
-            .program
-            .iter()
-            .map(|e| e.to_string())
-            .collect::<Vec<String>>()
-            .join("");
-        println!("{}", program_string);
-        for _ in 0..self.instruction_pointer {
-            print!(" ");
-        }
-        println!("^");
-        println!("{}", self.output_string);
-    }
-
-    /// Do the next thing
-    fn next(&mut self) {
-        self.step += 1;
-
-        match Command::from(self.program[self.instruction_pointer]) {
-            Command::MovRight => self.mov_right(),
-            Command::MovLeft => self.mov_left(),
-            Command::Inc => self.inc(),
-            Command::Dec => self.dec(),
-            Command::Print => self.print(),
-            Command::Read => todo!(), //self.read(),
-            Command::JumpForward => self.jump_forward(),
-            Command::JumpBackward => self.jump_backward(),
-            Command::Invalid => {}
-        }
-        self.instruction_pointer += 1;
-    }
-    /// Increment the data pointer (to point to the next cell to the right).
-    fn mov_right(&mut self) {
-        self.data_pointer += 1;
-    }
-    /// Decrement the data pointer (to point to the next cell to the left).
-    fn mov_left(&mut self) {
-        if self.data_pointer == 0 {
-            return;
-        }
-        self.data_pointer -= 1;
-    }
-
-    /// Increment (increase by one) the byte at the data pointer.
-    fn inc(&mut self) {
-        if self.data[self.data_pointer] == DataCell::MAX {
-            self.data[self.data_pointer] = 0;
-        } else {
-            self.data[self.data_pointer] += 1;
-        }
-    }
-    /// Decrement (decrease by one) the byte at the data pointer.
-    fn dec(&mut self) {
-        if self.data[self.data_pointer] == 0 {
-            self.data[self.data_pointer] = DataCell::MAX;
-        } else {
-            self.data[self.data_pointer] -= 1;
-        }
-    }
-
-    /// Output the byte at the data pointer.
-    fn print(&mut self) {
-        print!("{}", char::from(self.data[self.data_pointer]));
-        self.output_string
-            .push(char::from(self.data[self.data_pointer]));
-    }
-
-    /// If the byte at the data pointer is zero,
-    /// then instead of moving the instruction pointer forward to the next command,
-    /// jump it forward to the command after the matching ] command.
-    fn jump_forward(&mut self) {
-        if self.data[self.data_pointer] == 0 {
-            while self.program[self.instruction_pointer] != ']' || self.loop_depth > 0 {
-                self.instruction_pointer += 1;
-                if self.program[self.instruction_pointer] == '[' {
-                    self.loop_depth += 1;
-                } else if self.program[self.instruction_pointer] == ']' {
-                    self.loop_depth -= 1;
-                }
-            }
-        }
-    }
-
-    /// If the byte at the data pointer is nonzero,
-    /// then instead of moving the instruction pointer forward to the next command,
-    /// jump it back to the command after the matching [ command.
-    fn jump_backward(&mut self) {
-        if self.data[self.data_pointer] != 0 {
-            while self.program[self.instruction_pointer] != '[' && self.loop_depth > 0 {
-                self.instruction_pointer -= 1;
-                if self.program[self.instruction_pointer] == '[' {
-                    self.loop_depth -= 1;
-                } else if self.program[self.instruction_pointer] == ']' {
-                    self.loop_depth += 1;
-                }
-            }
+            program: Some("add two and five".to_string()),
+            list: false,
         }
     }
 }
@@ -248,16 +74,21 @@ fn main() {
     [[-]<]"#,
     );
 
-    let mut brain = Brain::new(programs.get("hello_world").unwrap());
-    let stdin = std::io::stdin();
-
-    while brain.instruction_pointer < brain.program.len() {
-        brain.next();
-        if cli.debug {
-            brain.print_debug();
+    if cli.list {
+        println!("Built-in programs:");
+        for name in programs.keys() {
+            println!("- {}", name);
         }
-        if cli.step {
-            stdin.read_line(&mut String::new()).unwrap();
+    } else {
+        let program_name = cli.program.unwrap_or("add_two_and_five".to_string());
+        if let Some(program) = programs.get(program_name.as_str()) {
+            eprintln!("Running program: '{}'", program_name);
+            let mut brain = Brain::new(program)
+                .with_debug(cli.debug)
+                .with_step_mode(cli.step);
+            brain.run();
+        } else {
+            println!("Program not found: {}", program_name);
         }
     }
 }
