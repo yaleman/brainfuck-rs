@@ -8,3 +8,12 @@ fn test_hello_world() {
 
     assert_eq!(brain.output_string().as_ref(), "Hello World");
 }
+
+#[test]
+fn test_nested_loops() {
+    let mut brain = Brain::new("+++++[>++++++[>++<-]<-]>>+++++.");
+
+    brain.run();
+
+    assert_eq!(brain.output_string().as_ref(), "A");
+}
