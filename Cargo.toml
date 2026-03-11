@@ -9,4 +9,9 @@ edition = "2021"
 clap = { version = "4.5.60", features = ["derive"] }
 
 [dev-dependencies]
+criterion = "0.8.2"
 tempfile = "3.27.0"
+
+[[bench]]
+name = "interpreter"
+harness = false

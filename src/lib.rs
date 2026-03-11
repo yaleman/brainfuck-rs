@@ -17,49 +17,74 @@
 #![deny(clippy::manual_let_else)]
 #![allow(clippy::indexing_slicing)] // because otherwise this'd be really slow.
 
-use std::{borrow::Cow, path::PathBuf};
+use std::{borrow::Cow, io::Write, path::PathBuf};
 
 pub type DataCell = u8;
 
-#[derive(Debug)]
-enum Command {
-    MovRight,
-    MovLeft,
-    Inc,
-    Dec,
-    Print,
-    Read,
-    JumpForward,
-    JumpBackward,
-    Invalid,
+const INITIAL_DATA_SIZE: usize = 30_000;
+
+fn is_valid_command(command: u8) -> bool {
+    matches!(
+        command,
+        b'>' | b'<' | b'+' | b'-' | b'.' | b',' | b'[' | b']'
+    )
 }
 
-impl From<char> for Command {
-    fn from(c: char) -> Self {
-        match c {
-            '>' => Command::MovRight,
-            '<' => Command::MovLeft,
-            '+' => Command::Inc,
-            '-' => Command::Dec,
-            '.' => Command::Print,
-            ',' => Command::Read,
-            '[' => Command::JumpForward,
-            ']' => Command::JumpBackward,
-            _ => Command::Invalid,
+fn command_name(command: u8) -> &'static str {
+    match command {
+        b'>' => "MovRight",
+        b'<' => "MovLeft",
+        b'+' => "Inc",
+        b'-' => "Dec",
+        b'.' => "Print",
+        b',' => "Read",
+        b'[' => "JumpForward",
+        b']' => "JumpBackward",
+        _ => "Invalid",
+    }
+}
+
+fn compile_program(program: &str) -> (Vec<u8>, Vec<Option<usize>>, String) {
+    let instructions = program
+        .bytes()
+        .filter(|command| is_valid_command(*command))
+        .collect::<Vec<u8>>();
+    let mut jump_targets = vec![None; instructions.len()];
+    let mut loop_stack = Vec::new();
+
+    for (index, command) in instructions.iter().copied().enumerate() {
+        match command {
+            b'[' => loop_stack.push(index),
+            b']' => {
+                if let Some(open_index) = loop_stack.pop() {
+                    jump_targets[open_index] = Some(index);
+                    jump_targets[index] = Some(open_index);
+                }
+            }
+            _ => {}
         }
     }
+
+    let program_text = instructions
+        .iter()
+        .map(|command| char::from(*command))
+        .collect();
+
+    (instructions, jump_targets, program_text)
 }
 
 pub struct Brain {
     pub data: Vec<DataCell>,
     pub data_pointer: usize,
-    pub program: Vec<char>,
+    pub program: Vec<u8>,
     pub instruction_pointer: usize,
     pub output_string: Vec<u8>,
     pub step: usize,
     pub debug: bool,
     pub debug_log: Option<PathBuf>,
     debug_log_handle: Option<std::fs::File>,
+    jump_targets: Vec<Option<usize>>,
+    program_text: String,
     pub step_mode: bool,
 }
 
@@ -73,16 +98,21 @@ pub enum BrainFucked {
 
 impl Brain {
     pub fn new(program: &impl ToString) -> Brain {
+        let source = program.to_string();
+        let (program, jump_targets, program_text) = compile_program(&source);
+
         Brain {
-            data: vec![0; 30000],
+            data: vec![0; INITIAL_DATA_SIZE],
             data_pointer: 0,
-            program: program.to_string().chars().collect(),
+            program,
             instruction_pointer: 0,
             output_string: Vec::new(),
             step: 0,
             debug: false,
             debug_log: None,
             debug_log_handle: None,
+            jump_targets,
+            program_text,
             step_mode: false,
         }
     }
@@ -103,6 +133,14 @@ impl Brain {
     }
 
     pub fn run(&mut self) -> Result<(), BrainFucked> {
+        let stdout = std::io::stdout();
+        let mut stdout = std::io::BufWriter::new(stdout.lock());
+
+        self.run_with_output(&mut stdout)
+    }
+
+    // This is here so we can benchmark it while sending everything to a null sink
+    pub fn run_with_output(&mut self, output: &mut impl Write) -> Result<(), BrainFucked> {
         let stdin = std::io::stdin();
 
         if let Some(debug_log) = &self.debug_log {
@@ -119,14 +157,21 @@ impl Brain {
         let program_len = self.program.len();
 
         while self.instruction_pointer < program_len {
-            self.do_step()?;
+            self.do_step(output)?;
             if self.debug {
+                output.flush().map_err(|err| {
+                    BrainFucked::Io(format!("Failed to flush program output: {err:?}"))
+                })?;
                 self.print_debug();
             }
             if self.step_mode {
                 let _ = stdin.read_line(&mut String::new());
             }
         }
+        output
+            .flush()
+            .map_err(|err| BrainFucked::Io(format!("Failed to flush program output: {err:?}")))?;
+
         Ok(())
     }
 
@@ -141,8 +186,8 @@ impl Brain {
         let mut buffer = Vec::new();
 
         buffer.push(format!(
-            "Command: {:?} Step: {}",
-            Command::from(self.program[self.instruction_pointer]),
+            "Command: {} Step: {}",
+            command_name(self.program[self.instruction_pointer]),
             self.step,
         ));
         buffer.push(format!("Current byte: {:?}", self.data[self.data_pointer]));
@@ -161,13 +206,7 @@ impl Brain {
             .join(" ");
         buffer.push(format!("Data: ({}):\n{}", self.data_pointer, data_output));
 
-        let program_string = self
-            .program
-            .iter()
-            .map(|e| e.to_string())
-            .collect::<Vec<String>>()
-            .join("");
-        buffer.push(program_string.to_string());
+        buffer.push(self.program_text.clone());
         let mut pointer_buf = String::new();
         for _ in 0..self.instruction_pointer {
             pointer_buf.push(' ');
@@ -186,19 +225,19 @@ impl Brain {
     }
 
     /// Do the next thing
-    pub fn do_step(&mut self) -> Result<(), BrainFucked> {
+    pub fn do_step(&mut self, output: &mut impl Write) -> Result<(), BrainFucked> {
         self.step += 1;
 
-        match Command::from(self.program[self.instruction_pointer]) {
-            Command::MovRight => self.mov_right(),
-            Command::MovLeft => self.mov_left(),
-            Command::Inc => self.inc(),
-            Command::Dec => self.dec(),
-            Command::Print => self.print(),
-            Command::Read => self.read()?,
-            Command::JumpForward => self.jump_forward()?,
-            Command::JumpBackward => self.jump_backward(),
-            Command::Invalid => {}
+        match self.program[self.instruction_pointer] {
+            b'>' => self.mov_right(),
+            b'<' => self.mov_left(),
+            b'+' => self.inc(),
+            b'-' => self.dec(),
+            b'.' => self.print(output)?,
+            b',' => self.read()?,
+            b'[' => self.jump_forward()?,
+            b']' => self.jump_backward()?,
+            _ => {}
         }
         self.instruction_pointer += 1;
         Ok(())
@@ -208,8 +247,7 @@ impl Brain {
     #[inline(always)]
     fn mov_right(&mut self) {
         self.data_pointer = self.data_pointer.saturating_add(1);
-        if self.data_pointer >= self.data.capacity() {
-            eprintln!("Resizing memory to {}", self.data.len() * 2);
+        if self.data_pointer >= self.data.len() {
             self.data.resize(self.data.len() * 2, 0);
         }
     }
@@ -238,9 +276,14 @@ impl Brain {
 
     /// Output the byte at the data pointer.
     #[inline(always)]
-    fn print(&mut self) {
-        print!("{}", char::from(self.data[self.data_pointer]));
-        self.output_string.push(self.data[self.data_pointer]);
+    fn print(&mut self, output: &mut impl Write) -> Result<(), BrainFucked> {
+        let byte = self.data[self.data_pointer];
+        output
+            .write_all(&[byte])
+            .map_err(|err| BrainFucked::Io(format!("Failed to write program output: {err:?}")))?;
+        self.output_string.push(byte);
+
+        Ok(())
     }
 
     /// If the byte at the data pointer is zero,
@@ -248,22 +291,12 @@ impl Brain {
     /// jump it forward to the command after the matching ] command.
     fn jump_forward(&mut self) -> Result<(), BrainFucked> {
         if self.data[self.data_pointer] == 0 {
-            let mut depth = 1;
-
-            let maxloop = 1000000;
-            let mut current_loop = 0;
-            while depth > 0 {
-                self.instruction_pointer = self.instruction_pointer.saturating_add(1);
-                if self.program[self.instruction_pointer] == '[' {
-                    depth += 1;
-                } else if self.program[self.instruction_pointer] == ']' {
-                    depth -= 1;
-                }
-                current_loop += 1;
-                if current_loop > maxloop {
-                    return Err(BrainFucked::TooManyLoops);
-                }
-            }
+            let Some(target) = self.jump_targets[self.instruction_pointer] else {
+                return Err(BrainFucked::InputError(
+                    "Unmatched '[' instruction".to_string(),
+                ));
+            };
+            self.instruction_pointer = target;
         }
         Ok(())
     }
@@ -271,18 +304,16 @@ impl Brain {
     /// If the byte at the data pointer is nonzero,
     /// then instead of moving the instruction pointer forward to the next command,
     /// jump it back to the command after the matching [ command.
-    fn jump_backward(&mut self) {
+    fn jump_backward(&mut self) -> Result<(), BrainFucked> {
         if self.data[self.data_pointer] != 0 {
-            let mut depth = 1;
-
-            while depth > 0 {
-                self.instruction_pointer -= 1;
-                if self.program[self.instruction_pointer] == ']' {
-                    depth += 1;
-                } else if self.program[self.instruction_pointer] == '[' {
-                    depth -= 1;
-                }
-            }
+            let Some(target) = self.jump_targets[self.instruction_pointer] else {
+                return Err(BrainFucked::InputError(
+                    "Unmatched ']' instruction".to_string(),
+                ));
+            };
+            self.instruction_pointer = target;
         }
+
+        Ok(())
     }
 }

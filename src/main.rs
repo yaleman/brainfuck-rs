@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::path::{Path, PathBuf};
 
 use brainfuck_rs::Brain;
 use clap::Parser;
@@ -23,50 +23,69 @@ struct Cli {
     list: bool,
 }
 
-fn main() {
-    let mut programs = HashMap::new();
+const PROGRAMS_DIR: &str = "./programs";
+const PROGRAM_EXTENSION: &str = "b";
 
-    let cli = Cli::parse();
+fn is_program_file(path: &Path) -> bool {
+    path.is_file() && path.extension().and_then(std::ffi::OsStr::to_str) == Some(PROGRAM_EXTENSION)
+}
 
-    for file in std::fs::read_dir("./programs").expect("failed to read programs directory") {
-        let file = file.expect("failed to read program file");
-        let path = file.path();
-        if path.is_file() && path.display().to_string().ends_with(".b") {
-            if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                let contents = std::fs::read_to_string(&path)
-                    .unwrap_or_else(|_| panic!("failed to read program file: {:?}", path));
-                programs.insert(name.to_string(), contents);
+fn list_programs() -> std::io::Result<Vec<String>> {
+    let mut programs = Vec::new();
+
+    for entry in std::fs::read_dir(PROGRAMS_DIR)? {
+        let path = entry?.path();
+        if is_program_file(&path) {
+            if let Some(name) = path.file_stem().and_then(std::ffi::OsStr::to_str) {
+                programs.push(name.to_string());
             }
-        } else {
-            eprintln!(
-                "Skipping non-file or non-.b entry in programs directory: {:?}",
-                path
-            );
         }
     }
 
+    programs.sort_unstable();
+    Ok(programs)
+}
+
+fn load_program(program_name: &str) -> std::io::Result<String> {
+    let path = Path::new(PROGRAMS_DIR).join(format!("{program_name}.{PROGRAM_EXTENSION}"));
+
+    std::fs::read_to_string(path)
+}
+
+fn main() {
+    let cli = Cli::parse();
+
     if cli.list {
         println!("Built-in programs:");
-        for name in programs.keys() {
-            println!("- {}", name);
+        match list_programs() {
+            Ok(programs) => {
+                for name in programs {
+                    println!("- {}", name);
+                }
+            }
+            Err(err) => eprintln!("Failed to list built-in programs: {err:?}"),
         }
     } else {
         let program_name = cli.program.unwrap_or("add_two_and_five".to_string());
-        if let Some(program) = programs.get(program_name.as_str()) {
-            eprintln!("Running program: '{}'", program_name);
-            let mut brain = Brain::new(program)
-                .with_debug(cli.debug)
-                .with_step_mode(cli.step);
-            if let Some(debug_file) = cli.debug_file {
-                brain = brain.with_log_file(debug_file);
+        match load_program(&program_name) {
+            Ok(program) => {
+                eprintln!("Running program: '{}'", program_name);
+                let mut brain = Brain::new(&program)
+                    .with_debug(cli.debug)
+                    .with_step_mode(cli.step);
+                if let Some(debug_file) = cli.debug_file {
+                    brain = brain.with_log_file(debug_file);
+                }
+                if let Err(err) = brain.run() {
+                    eprintln!("Error running program: {:?}", err);
+                } else {
+                    eprintln!("Program ran OK!");
+                };
             }
-            if let Err(err) = brain.run() {
-                eprintln!("Error running program: {:?}", err);
-            } else {
-                eprintln!("Program ran OK!");
-            };
-        } else {
-            println!("Program not found: {}", program_name);
+            Err(err) => eprintln!(
+                "Program not found or unreadable '{}': {err:?}",
+                program_name
+            ),
         }
     }
 }
