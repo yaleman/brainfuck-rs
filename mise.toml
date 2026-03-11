@@ -11,3 +11,10 @@ run = "cargo fmt"
 
 [tasks.check]
 depends = ["test", "clippy"]
+
+
+[tasks.coverage]
+run = [
+    "cargo tarpaulin --out Html",
+    "echo coverage report generated at tarpaulin-report.html",
+]
