@@ -6,5 +6,5 @@ fn test_hello_world() {
 
     brain.run();
 
-    assert_eq!(brain.output_string().as_ref(), "Hello World!");
+    assert_eq!(brain.output_string().as_ref(), "Hello World");
 }

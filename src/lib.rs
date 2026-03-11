@@ -38,7 +38,6 @@ pub struct Brain {
     pub instruction_pointer: usize,
     pub output_string: Vec<u8>,
     pub step: usize,
-    pub loop_depth: usize,
     pub debug: bool,
     pub step_mode: bool,
 }
@@ -52,7 +51,6 @@ impl Brain {
             instruction_pointer: 0,
             output_string: Vec::new(),
             step: 0,
-            loop_depth: 0,
             debug: false,
             step_mode: false,
         }
@@ -179,12 +177,14 @@ impl Brain {
     /// jump it forward to the command after the matching ] command.
     fn jump_forward(&mut self) {
         if self.data[self.data_pointer] == 0 {
-            while self.program[self.instruction_pointer] != ']' || self.loop_depth > 0 {
+            let mut depth = 1;
+
+            while depth > 0 {
                 self.instruction_pointer += 1;
                 if self.program[self.instruction_pointer] == '[' {
-                    self.loop_depth += 1;
+                    depth += 1;
                 } else if self.program[self.instruction_pointer] == ']' {
-                    self.loop_depth -= 1;
+                    depth -= 1;
                 }
             }
         }
@@ -195,12 +195,14 @@ impl Brain {
     /// jump it back to the command after the matching [ command.
     fn jump_backward(&mut self) {
         if self.data[self.data_pointer] != 0 {
-            while self.program[self.instruction_pointer] != '[' && self.loop_depth > 0 {
+            let mut depth = 1;
+
+            while depth > 0 {
                 self.instruction_pointer -= 1;
-                if self.program[self.instruction_pointer] == '[' {
-                    self.loop_depth -= 1;
-                } else if self.program[self.instruction_pointer] == ']' {
-                    self.loop_depth += 1;
+                if self.program[self.instruction_pointer] == ']' {
+                    depth += 1;
+                } else if self.program[self.instruction_pointer] == '[' {
+                    depth -= 1;
                 }
             }
         }
