@@ -4,7 +4,7 @@ run = "cargo test --quiet"
 
 [tasks.clippy]
 depends = ["fmt"]
-run = "cargo clippy --quiet -- -D warnings"
+run = "cargo clippy --quiet --all-features --all-targets -- -D warnings"
 
 [tasks.fmt]
 run = "cargo fmt"
