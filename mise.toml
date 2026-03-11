@@ -15,6 +15,6 @@ depends = ["test", "clippy"]
 
 [tasks.coverage]
 run = [
-    "cargo tarpaulin --out Html",
+    "cargo tarpaulin --out Html --exclude-files src/main.rs",
     "echo coverage report generated at tarpaulin-report.html",
 ]

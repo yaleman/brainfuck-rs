@@ -63,3 +63,13 @@ fn ignore_invalid() {
 
     assert_eq!(brain.data_pointer, 0);
 }
+
+#[test]
+fn try_create_bad_log_file() {
+    let mut brain = Brain::new(&"+++++.").with_log_file("/invalid/path/to/logfile.log".into());
+    let result = brain.run();
+    assert!(
+        result.is_err(),
+        "program should fail to run with invalid log file path"
+    );
+}

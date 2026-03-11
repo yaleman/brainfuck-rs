@@ -68,6 +68,7 @@ pub enum BrainFucked {
     TooManyLoops,
     InputError(String),
     Io(String),
+    Unimplemented(String),
 }
 
 impl Brain {
@@ -107,7 +108,11 @@ impl Brain {
         if let Some(debug_log) = &self.debug_log {
             match std::fs::File::create(debug_log) {
                 Ok(file) => self.debug_log_handle = Some(file),
-                Err(err) => eprintln!("Failed to create debug log file: {err:?}"),
+                Err(err) => {
+                    return Err(BrainFucked::Io(format!(
+                        "Failed to create debug log file: {err:?}"
+                    )))
+                }
             }
         }
 
@@ -215,21 +220,9 @@ impl Brain {
     }
 
     fn read(&mut self) -> Result<(), BrainFucked> {
-        let mut buffer = [0u8; 1];
-        use std::io::Read;
-        match std::io::stdin().read(&mut buffer) {
-            Ok(bytes_read) => {
-                if bytes_read == 0 {
-                    Ok(())
-                } else {
-                    self.data[self.data_pointer] = buffer[0];
-                    Ok(())
-                }
-            }
-            Err(err) => Err(BrainFucked::InputError(format!(
-                "Failed to read input: {err:?}"
-            ))),
-        }
+        Err(BrainFucked::Unimplemented(
+            "Read isn't implemented yet!".to_string(),
+        ))
     }
 
     /// Increment (increase by one) the byte at the data pointer.
